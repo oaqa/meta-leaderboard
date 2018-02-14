@@ -8,12 +8,14 @@ import json
 import numpy as np
 import string
 from nltk import bleu
-#from nltk.translate import bleu
+from nltk.translate import bleu
+from nltk.translate.bleu_score import sentence_bleu
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import accuracy_score
 #from PyRouge.pyrouge import Rouge
 #from pyrouge import Rouge155
-from rouge import Rouge 
+#from rouge import Rouge
+from pythonrouge.pythonrouge import Pythonrouge
 
 
 #logging.config.fileConfig('logging.ini')
@@ -22,10 +24,14 @@ from rouge import Rouge
 
 class Evaluator(object):
     def __init__(self):
-        self.gold_msmarco_dev = "~/Projects/QA_datasets/common_pipeline/msmarco_dev_formatted.json"
-        self.gold_searchqa_dev = "/Users/khyathi/Projects/QA_datasets/common_pipeline/searchqa_dev_formatted.json"
-        self.gold_bioasq_train = "/Users/khyathi/Projects/QA_datasets/common_pipeline/bioasq_train_formatted.json"
-        self.gold_quasars_dev = "~/Projects/QA_datasets/common_pipeline/quasar-s_dev_formatted.json"
+        f = open("config.txt",'r')
+        lines = f.readlines()
+        self.gold_msmarco_dev = lines[0].strip()
+        self.gold_searchqa_dev = lines[1].strip()
+        #self.gold_bioasq_train = "/Users/khyathi/Projects/QA_datasets/common_pipeline/bioasq_train_formatted.json"
+        self.gold_bioasq_4b = lines[2].strip()
+        self.gold_quasars_dev = lines[3].strip()
+        f.close()
         
 
     def loadFiles(self):
@@ -39,7 +45,7 @@ class Evaluator(object):
         elif self.cur_origin == 'searchqa':
             self.goldFilePath = self.gold_searchqa_dev
         elif self.cur_origin == 'bioasq':
-            self.goldFilePath = self.gold_bioasq_train
+            self.goldFilePath = self.gold_bioasq_4b
         elif self.cur_origin == 'quasar-s':
             self.goldFilePath = self.gold_quasars_dev
         self.goldData = json.load(open(self.goldFilePath, 'r'))
@@ -49,24 +55,26 @@ class Evaluator(object):
     def performEvaluation(self, systemFilePath):
         self.systemFilePath = systemFilePath
         self.loadFiles()
-        measuresList = ['rouge', 'bleu', 'precision', 'recall', 'f_measure', 'f1_match', 'accuracy']
+        measuresList = ['rouge-2', 'rouge-su4', 'bleu', 'precision', 'recall', 'f_measure', 'f1_match', 'accuracy']
         username = self.getUser()
         origin = self.cur_origin
-        scoreDict = { 'bleu' : 'NA', 'rouge' : 'NA' , 'precision' : 'NA', 'recall' : 'NA', 'f_measure' : 'NA', \
+        scoreDict = { 'bleu' : 'NA', 'rouge-2' : 'NA', 'rouge-su4' : 'NA' , 'precision' : 'NA', 'recall' : 'NA', 'f_measure' : 'NA', \
                     'f1_match' : 'NA', 'accuracy' : 'NA', 'username': username , 'origin': origin}
         if origin == 'msmarco':
             #scoreDict['bleu'] = self.getBleu()
-            scoreDict['rouge'] = self.getRouge()
+            scoreDict['rouge-2'], scoreDict['rouge-su4'] = self.getPythonRouge()
+            #scoreDict['rouge'] = self.getRouge()
             scoreDict['f1_match'] = self.getf1_match()
             scoreDict['accuracy'] = self.exact_match()
         elif origin == 'searchqa':
             scoreDict['accuracy'] = self.getAccuracy()
             scoreDict['f1_match'] = self.getf1_match()
         elif origin == 'bioasq':
-            #scoreDict['bleu'] = self.getBleu()
-            scoreDict['rouge'] = self.getRouge()
+            scoreDict['bleu'] = self.getBleu()
+            scoreDict['rouge-2'], scoreDict['rouge-su4'] = self.getPythonRouge()
+            #scoreDict['rouge'] = self.getRouge()
             scoreDict['f1_match'] = self.getf1_match()
-            scoreDict['accuracy'] = self.getAccuracy()
+            #scoreDict['accuracy'] = self.getAccuracy()
         elif origin == 'quasar-s':
             scoreDict['accuracy'] =self.getAccuracy()
         elif origin == 'quasar-t':
@@ -105,10 +113,67 @@ class Evaluator(object):
         for i in range(len(self.systemQuestions)):
             reference = self.goldQuestions[i]["ideal_answers"][0].split() #[['this', 'is', 'a', 'test'], ['this', 'is' 'test']]
             candidate = self.systemQuestions[i]["ideal_answers"][0].split()
-            score = bleu([reference], candidate )
+            #score = bleu([reference], candidate )
+            score = sentence_bleu([reference], candidate)
             BSCORES.append(score)
+            #print score
         bleu = np.mean(BSCORES)
         return bleu
+
+    def getPythonRouge(self):
+        # https://github.com/tagucci/pythonrouge
+        '''# system summary(predict) & reference summary
+        summary = [[" Tokyo is the one of the biggest city in the world."]]
+        reference = [[["The capital of Japan, Tokyo, is the center of Japanese economy."]]]
+
+        # initialize setting of ROUGE to eval ROUGE-1, 2, SU4
+        # if you evaluate ROUGE by sentence list as above, set summary_file_exist=False
+        # if recall_only=True, you can get recall scores of ROUGE
+        rouge = Pythonrouge(summary_file_exist=False,
+                            summary=summary, reference=reference,
+                            n_gram=2, ROUGE_SU4=True, ROUGE_L=False,
+                            recall_only=True, stemming=True, stopwords=True,
+                            word_level=True, length_limit=True, length=50,
+                            use_cf=False, cf=95, scoring_formula='average',
+                            resampling=True, samples=1000, favor=True, p=0.5)
+        score = rouge.calc_score()
+        print(score)
+        '''
+        #print len(self.systemQuestions)
+        #print len(self.goldQuestions)
+        #raw_input()
+        RSCORES_2 = []
+        RSCORES_SU4 = []
+        for i in range(len(self.systemQuestions)):
+            #print self.systemQuestions[i]['ideal_answers'][0]
+            #raw_input()
+            try:
+                summary = [[str(self.systemQuestions[i].get('ideal_answers','None')[0].encode('utf-8'))]]
+            except:
+                summary = [['None']]
+            try:
+                reference = [[[str(self.goldQuestions[i].get('ideal_answers', 'None')[0].encode('utf-8'))]]]
+            except:
+                reference = [[['None']]]
+            rouge = Pythonrouge(summary_file_exist=False,
+                            summary=summary, reference=reference,
+                            n_gram=2, ROUGE_SU4=True, ROUGE_L=False,
+                            recall_only=True, stemming=True, stopwords=True,
+                            word_level=True, length_limit=True, length=50,
+                            use_cf=False, cf=95, scoring_formula='average',
+                            resampling=True, samples=1000, favor=True, p=0.5)
+            score = rouge.calc_score()
+            RSCORES_SU4.append(score['ROUGE-SU4'])
+            RSCORES_2.append(score['ROUGE-2'])
+            print score['ROUGE-SU4']
+        raw_input()
+        #print "done rouge"
+        #raw_input()
+        r2 = np.mean(RSCORES_2)
+        rsu4 = np.mean(RSCORES_SU4)
+        return r2, rsu4
+
+
 
     def getRouge(self):
         '''
@@ -117,6 +182,7 @@ class Evaluator(object):
         rouge = Rouge()
         scores = rouge.get_scores(reference, hypothesis)
         '''
+        
         RSCORES = []
         rouge = Rouge()
         for i in range(len(self.systemQuestions)):
@@ -188,8 +254,9 @@ class Evaluator(object):
         accuracy = accuracy_score(y_true, y_pred)
         print accuracy
 
-
+'''
 if __name__ == '__main__':
     goldFilePath = "/Users/khyathi/temp2/BioasqArchitecture/submission.json"
     systemFilePath = "/Users/khyathi/temp2/BioasqArchitecture/submission.json"
     evaluatorInstance = Evaluator(goldFilePath, systemFilePath, 'bleu')
+'''

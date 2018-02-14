@@ -2,8 +2,7 @@ import os
 from flask import Flask, request, redirect, url_for
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
-import json
-from rouge import Rouge 
+import json 
 import numpy as np
 import time
 import datetime
@@ -15,7 +14,7 @@ ALLOWED_EXTENSIONS = set(['json'])
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 10240000
 
 #evalInstance = Evaluator("/Users/khyathi/Projects/QA_datasets/common_pipeline/bioasq_train_formatted.json")
 evalInstance = Evaluator()
@@ -27,7 +26,7 @@ def allowed_file(filename):
 def generateHtml(filename):
     if filename != 'initial_reload':
         scoreDict = evalInstance.performEvaluation(filename)
-    measuresList = ['Rouge', 'Bleu', 'Precision', 'Recall', 'F-measure', 'F1-match', 'Accuracy']
+    measuresList = ['Rouge-2', 'Rouge-SU4', 'Bleu', 'Precision', 'Recall', 'F-measure', 'F1-match', 'Accuracy']
     table = "<table>\n<tr> <th> Name </th> <th> Origin </th>"
     for el in measuresList:
         table += "<th>" + el + "</th>"
